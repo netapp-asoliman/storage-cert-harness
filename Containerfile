@@ -18,8 +18,10 @@ LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
 COPY bin/harness /usr/bin/
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY container-entrypoint.sh /usr/local/bin/
-# OS RPM versions come from BUILD_IMAGE; promote a new builder digest for CVE fixes (/var/lib/rpm kept for Trivy).
-RUN rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
+# Builder RPM versions come from BUILD_IMAGE; jq is installed from enabled UBI repositories.
+RUN microdnf install -y jq \
+  && microdnf clean all \
+  && rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
   && chmod 0755 /usr/local/bin/container-entrypoint.sh \
   && chown -R 65532:65532 /opt/virtbench-runtime /home/harness

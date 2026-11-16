@@ -338,7 +338,10 @@ In the supported GitHub Actions flow, `image-push` runs automatically on
 
 The `Containerfile` extends the digest-pinned **harness-builder** image
 (`FROM ${BUILD_IMAGE}`), adds `bin/harness`, the virtbench `ssh-pod.yaml` patch,
-and the entrypoint. It does **not** run `microdnf update` or re-copy the tool
+the entrypoint, and installs `jq` using `microdnf`. Unlike packages already in
+the builder image, the installed `jq` package and its dependencies are resolved
+from the enabled UBI repositories at build time. It does **not** run
+`microdnf update` or re-copy the tool
 tree onto a second `RUNTIME_IMAGE` rootfs (that pattern duplicated UBI layers and
 failed Dive). It does not download, compile, or relabel the packaged tools.
 `RUNTIME_IMAGE` in `images.env` must still match the builder base stream.
@@ -347,9 +350,11 @@ release CI uses the pinned digest from `images.env`.
 
 ### OS and RPM security updates
 
-**RPM versions in the shipped harness image come from the pinned `BUILD_IMAGE`
-digest.** harness-builder runs `microdnf update` when it is built; the harness
-runtime layer does not refresh OS packages again.
+**Most RPM versions in the shipped harness image come from the pinned
+`BUILD_IMAGE` digest.** The `jq` package and any new dependencies are installed
+from the enabled UBI repositories at runtime-image build time. harness-builder
+runs `microdnf update` when it is built; the harness runtime layer does not
+refresh the existing OS packages again.
 
 - To pick up **new RPM or UBI security fixes**, publish a new **harness-builder**
   from `storage-cert-harness-images`, record its digest, bump
