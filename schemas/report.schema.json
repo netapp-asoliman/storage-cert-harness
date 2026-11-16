@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/openshift-storage-cert/storage-cert-harness/schemas/report.schema.json",
+  "title": "Certification Report",
+  "description": "Graded run output: one verdict per scorable item (each sla and each check) within a TR. Provenance is stamped for auditability. See decisions/0006.",
+  "type": "object",
+  "required": ["run_id", "status", "health", "certifiable", "provenance", "composition", "verdicts", "summary"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "status": { "enum": ["running", "complete", "partial", "failed", "abandoned"] },
+    "health": { "enum": ["healthy", "degraded", "unhealthy"] },
+    "certifiable": { "type": "boolean" },
+    "completion_reason": { "type": "string" },
+    "schema_version": { "type": "string", "description": "KB export schema the run consumed" },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "kb_git_commit": { "type": "string" },
+        "kb_commit_date": { "type": "string" },
+        "generated_date": { "type": "string" }
+      }
+    },
+    "storage_selections": {
+      "type": "array",
+      "description": "Resolved classes for each snapshot-backed execution; effective_storage_class identifies a private KubeVirt storage class copy.",
+      "items": {
+        "type": "object",
+        "required": ["tr", "storage_class", "snapshot_class"],
+        "properties": {
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "scenario": { "type": "string" },
+          "storage_class": { "type": "string" },
+          "snapshot_class": { "type": "string" },
+          "effective_storage_class": { "type": "string" }
+        }
+      }
+    },
+    "attestations": {
+      "type": "array",
+      "description": "Partner-declared, unobservable claims about the tested CSI and storage-array combination.",
+      "items": {
+        "type": "object",
+        "required": ["claim", "value"],
+        "properties": {
+          "claim": { "type": "string" },
+          "value": { "type": "string" },
+          "signed_by": { "type": "string" }
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "required": ["parts_count"],
+      "properties": {
+        "parts_count": { "type": "integer", "minimum": 0 },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["part_id", "status"],
+            "properties": {
+              "part_id": { "type": "string" },
+              "kind": { "type": "string" },
+              "started_at": { "type": "string" },
+              "ended_at": { "type": "string" },
+              "status": { "enum": ["running", "complete", "partial", "failed", "abandoned"] },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "executions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tr", "state"],
+        "properties": {
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "scenario": { "type": "string" },
+          "state": { "enum": ["queued", "running", "completed", "aborted"] },
+          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "stage": { "type": "string" },
+          "started_at": { "type": "string" },
+          "ended_at": { "type": "string" },
+          "reason": { "type": "string" },
+          "artifacts": {
+            "description": "Result files this execution was graded from, relative to the run working directory.",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "severity": { "type": "string" },
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "tool": { "type": "string" },
+          "stage": { "type": "string" },
+          "message": { "type": "string" },
+          "started_at": { "type": "string" },
+          "ended_at": { "type": "string" },
+          "duration_s": { "type": "number" },
+          "resolved": { "type": "boolean" },
+          "blocks_certification": { "type": "boolean" },
+          "impact": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tr", "item", "outcome"],
+        "properties": {
+          "tr": { "type": "string", "description": "TR id" },
+          "scenario": { "type": "string", "description": "run label (e.g. under-pressure); distinguishes merged runs of the same TR" },
+          "variant": { "type": "string", "description": "Named plan execution, absent for default executions" },
+          "item": { "type": "string", "description": "scorable item, e.g. sla:latency_ms@p99 or check:snapshot-restore" },
+          "outcome": { "enum": ["pass", "fail", "error", "skip"] },
+          "reason": { "type": "string" },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" }
+        }
+      }
+    },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tr", "name", "value"],
+        "properties": {
+          "tr": { "type": "string" },
+          "variant": { "type": "string" },
+          "name": { "type": "string" },
+          "value": { "type": "number" },
+          "unit": { "type": "string" },
+          "percentile": { "type": "string" },
+          "level": { "type": "integer" }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "summary": {
+      "type": "object",
+      "required": ["total", "pass", "fail", "error", "skip"],
+      "properties": {
+        "total": { "type": "integer" },
+        "pass": { "type": "integer" },
+        "fail": { "type": "integer" },
+        "error": { "type": "integer" },
+        "skip": { "type": "integer" }
+      }
+    }
+  }
+}

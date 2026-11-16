@@ -1,0 +1,421 @@
+# Cluster Setup Guide for Partners
+
+This guide walks a storage partner through preparing an OpenShift cluster to
+run the storage certification harness from scratch.
+
+---
+
+## Prerequisites Checklist
+
+Complete every item before you begin. The harness `preflight` command also
+verifies most of these automatically.
+
+- [ ] OpenShift cluster **4.20 or later**, multi-node (3 control-plane + ≥ 3 workers)
+- [ ] SNO cluster **not** used
+- [ ] Worker nodes meet hardware minimums (see [cluster-requirements.md](cluster-requirements.md#hardware-minimums))
+- [ ] `cluster-admin` credentials available (kubeconfig or token)
+- [ ] `oc` / `kubectl` installed on the machine that will run the harness
+- [ ] `podman` (≥ 4.x) installed on the machine that will run the harness
+- [ ] Storage array is cabled / routed; all worker nodes can reach it
+- [ ] `multipathd` enabled and configured on all worker nodes (iSCSI and FC plans)
+- [ ] `iscsid` enabled on all worker nodes (iSCSI plans only)
+- [ ] CSI driver installed and **all driver pods are Running/Ready**
+- [ ] `StorageClass` for the storage under test exists in the cluster
+- [ ] `VolumeSnapshotClass` created and exists in the cluster
+- [ ] CDI scratch space supports Filesystem and ReadWriteOnce when required (VM / CDI test plans)
+- [ ] `thresholds.json` present with the repository certification inputs
+- [ ] `backends.yaml` prepared with your array's details (copy `backends.example.yaml`)
+- [ ] A test-plan YAML chosen from `plans/` (or a custom plan)
+- [ ] Node remediation configured if the plan includes the HA/failure-recovery test (Step 4)
+- [ ] Image registry reachable from the execution host (or internal mirror configured)
+
+---
+
+## Step 1 — Confirm a Healthy Qualifying Cluster
+
+Ensure you have an OCP cluster that satisfies all requirements in
+[cluster-requirements.md](cluster-requirements.md) before proceeding. Cluster
+provisioning itself is out of scope here — refer to the
+[official OpenShift installation documentation](https://docs.openshift.com/container-platform/latest/installing/index.html)
+if you still need to deploy one.
+
+Verify the cluster is fully healthy:
+
+```bash
+export KUBECONFIG=/path/to/kubeconfig
+
+# All nodes Ready
+oc get nodes
+
+# No degraded cluster operators
+oc get co | grep -v "True.*False.*False"
+
+# No failing Pods in kube-system / openshift-*
+oc get pods -A | grep -Ev "(Running|Completed|Succeeded)"
+```
+
+Expected: all nodes `Ready`, all cluster operators `Available=True / Degraded=False / Progressing=False`. Resolve any issues before continuing.
+
+---
+
+## Step 2 — Configure Storage Transport Prerequisites
+
+> Skip if your test plan uses NFS or NVMe-oF/TCP only.
+
+For **iSCSI** and **FC** plans, `multipathd` (and `iscsid` for iSCSI) must be
+active on all worker nodes before running certification. Configure them via
+whichever method suits your setup:
+
+- **Vendor CSI auto-configuration** — some drivers (e.g. HPE / NetApp)
+can deploy the required `MachineConfig` objects automatically.
+Check your CSI driver's documentation first; if supported, this can be
+handled as part of [Step 3](#step-3--install-the-csi-driver-and-define-required-storageclasses).
+- **Manual** `MachineConfig` — if your driver does not handle it, apply the
+appropriate `MachineConfig` objects yourself. See the
+[OCP documentation on enabling iSCSI initiators](https://docs.openshift.com/container-platform/latest/storage/persistent_storage/persistent-storage-iscsi.html)
+and your CSI driver's multipath configuration guide for the exact settings.
+
+---
+
+## Step 3 — Install the CSI Driver and Define Required StorageClasses
+
+Install your storage vendor's CSI driver following the vendor's documentation.
+After installation, confirm the driver is healthy:
+
+```bash
+# All CSI driver pods should be Running
+oc get pods -n <csi-driver-namespace>
+```
+
+### StorageClass under test
+
+Create the `StorageClass`(es) that the certification plan will target. The
+class name(s) must match what you configure in `backends.yaml` (Step 5). Refer
+to your CSI driver's documentation for the correct provisioner name and
+parameters.
+
+```bash
+# Confirm the StorageClass is present and has the correct provisioner
+oc get storageclass <your-storage-class> -o wide
+```
+
+Annotate a default storage class for OCP/CNV:
+
+```bash
+oc annotate storageclass <your-storage-class> \
+  storageclass.kubevirt.io/is-default-virt-class="true"
+```
+
+### VolumeSnapshotClass
+
+Create a `VolumeSnapshotClass` backed by the same CSI driver and confirm it
+exists:
+
+```bash
+oc get volumesnapshotclass
+```
+
+### CDI scratch space (VM / CDI test plans only)
+
+Some CDI image operations require scratch volumes with Filesystem volume mode
+and ReadWriteOnce access. Ensure the selected `StorageClass` can provision
+these volumes and that its backend placement meets the scenario's requirements.
+Configure it via `CDIConfig` or through the `HyperConverged` CR if OpenShift
+Virtualization is installed. See [storage placement and preflight](storage-preflight.md)
+for source, target, and scratch selection and checks.
+
+```bash
+# Via CDIConfig directly
+oc patch cdiconfig config --type=merge \
+  -p '{"spec":{"scratchSpaceStorageClass":"<filesystem-storageclass-name>"}}'
+```
+
+```yaml
+# Via HyperConverged CR (OpenShift Virtualization)
+apiVersion: hco.kubevirt.io/v1beta1
+kind: HyperConverged
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: openshift-cnv
+spec:
+  scratchSpaceStorageClass: "<filesystem-storageclass-name>"
+```
+
+**Optional smoke test** — launch a pod with a PVC attached and confirm it mounts
+cleanly before investing time in a full certification run.
+
+---
+
+## Step 4 — Configure Node Remediation (HA test plans only)
+
+Install and configure node remediation with your preferred remediation provider.
+See [HA Testing — Node Remediation](cluster-requirements.md#ha-testing--node-remediation)
+in the cluster requirements for operator choices and guidance. The following
+example covers **TR-VIRT-007 in `far-operator` mode using IPMI**. Other fence
+agents require different parameters; follow your agent's and FAR operator's
+documentation rather than reusing the IPMI options unchanged. The partner
+helpers check the target node and basic FAR manifest fields for any agent;
+`fence_ipmilan` also requires a Secret reference and a target-keyed `--ip`
+address. Other agents' options are left to the provider to validate.
+
+1. Install the Fence Agents Remediation (FAR) operator and verify that its CSV
+   is Succeeded and its CRD is installed:
+
+   ```bash
+   oc get csv -n openshift-workload-availability
+   oc get crd fenceagentsremediations.fence-agents-remediation.medik8s.io
+   ```
+
+   The operator/OLM creates the
+   `fence-agents-remediation-controller-manager-service-cert` TLS Secret.
+   **Do not create or replace it yourself.** It is unrelated to the BMC
+   credentials below. Node Health Check can automate detection of unhealthy
+   nodes, but the harness's `far-operator` test triggers FAR directly.
+
+2. Create a separate credential Secret in the namespace used by the FAR
+   configuration. Review [the Secret example](../examples/fence-agents-credentials-shared.example.yaml)
+   to see the required name and keys; it contains **fake values only** and must
+   not be applied as-is. For a real deployment, store the BMC username and
+   password in protected files outside this repository, then use the command
+   below to create the Secret from those files:
+
+   ```bash
+   oc create secret generic fence-agents-credentials-shared \
+     -n openshift-workload-availability \
+     --from-file=--username=/secure/path/far-username \
+     --from-file=--password=/secure/path/far-password
+   ```
+
+   Do not put real credentials in the plan, FAR JSON, shell arguments, or a
+   committed Secret manifest. Avoid client-side `oc apply` with a Secret
+   containing `stringData`: its `last-applied-configuration` annotation can
+   expose the plaintext values. If an existing Secret has that annotation,
+   remove the annotation and rotate any exposed credentials.
+
+3. Copy [the IPMI FAR example](../examples/far-config.example.json) to a local
+   `far-config.json` (ignored by Git at the repository root). Set
+   `metadata.name` to the exact Kubernetes name of the worker that will be
+   fenced; use that same name as the key under
+   `spec.nodeparameters["--ip"]`. Set its value to that worker's **BMC address**
+   (not its cluster IP), and set `spec.sharedSecretName` to the Secret from step
+   2. The example uses `fence_ipmilan`, `--action: reboot`, and `--lanplus`;
+   verify that the BMC is reachable from FAR and that its account is permitted
+   to reboot the node before starting this disruptive test.
+
+4. In the plan, configure `TR-VIRT-007` with `mode: far-operator`, the same
+   worker name in `node:`, and `far_config: /far-config.json`. For the partner
+   helper scripts, set `FAR_CONFIG` to the **host** copy before preflight and
+   the no-load run (the default is `./far-config.json` at the repository root):
+
+   ```bash
+   export FAR_CONFIG=/local/path/far-config.json
+   make partner-preflight
+   make partner-cert-no-load-80
+   ```
+
+   The helper scripts verify the file, its `metadata.name`, and that the target
+   is a Ready, schedulable worker in the Kubernetes API before pulling the
+   image, then mount it **read-only** at `/far-config.json` inside both
+   containers. Keep the host file unchanged from validation through completion
+   of the run; if you edit or replace it, rerun preflight before certification.
+   A read-only container mount does not prevent edits on the host. Examples
+   are never mounted automatically. For a manual `podman run`, include
+   `-v /local/path/far-config.json:/far-config.json:ro,Z`;
+   the plan path alone cannot make a host file accessible in the container.
+   Run partner preflight and certification containers **sequentially** when
+   they share a FAR config: their private SELinux `:Z` mounts are not designed
+   for concurrent use. Never run two TR-VIRT-007 cycles at once; both could
+   fence/reboot the same node. The helper scripts do not enforce this rule.
+   This Kubernetes check does not test BMC reachability or credentials; verify
+   those separately through your fencing provider without triggering a reboot.
+
+   Confirm the target is a Ready worker, the Secret and CRD are present, and
+   the test account can create FAR resources before running the HA plan:
+
+   ```bash
+   oc get node worker-0.example.com
+   oc get secret fence-agents-credentials-shared -n openshift-workload-availability -o name
+   oc auth can-i create fenceagentsremediations.fence-agents-remediation.medik8s.io \
+     -n openshift-workload-availability
+   ```
+
+   Replace the sample node name with the real target. **TR-VIRT-007 will
+   intentionally fence/reboot the named node**; schedule it only when that
+   disruption is acceptable.
+
+---
+
+## Step 5 — Prepare the Backend Configuration
+
+Copy the example file and fill in your array's details:
+
+```bash
+cp backends.example.yaml backends.yaml
+```
+
+Edit `backends.yaml`:
+
+```yaml
+backends:
+  - name: my-array          # referenced by --backend or plan backend:
+    vendor: <vendor-name>
+    storage_class: <storage-class-name>
+    snapshot_class: <snapshot-class-name>
+    params:
+      # vendor-specific connection params (e.g. management endpoint, SVM name)
+    secrets:
+      # use file refs or k8s Secret refs — never plaintext credentials here
+      username:
+        from_file: /run/secrets/storage-username
+      password:
+        from_file: /run/secrets/storage-password
+```
+
+See [ADR-0005](../decisions/0005-test-plans-and-backend-config.md) for the full
+credential-reference syntax. **Do not commit** `backends.yaml` — it is
+gitignored.
+
+`snapshot_class` selects the VolumeSnapshotClass for VM snapshot tests
+(TR-VIRT-010 and TR-VIRT-027) and datasource-clone tests with `use_snapshot: true`.
+Preflight checks that the class exists and that its driver matches the storage
+class. If omitted, direct snapshots use the matching driver's default class;
+VM snapshots use KubeVirt's StorageProfile/default resolution.
+
+KubeVirt does not expose a snapshot-class selector on a VirtualMachineSnapshot.
+For an explicit selection the harness creates a temporary copy of the backend
+StorageClass, preserving its provisioning settings, and configures that copy's
+CDI StorageProfile. This requires permission to create/delete StorageClasses and
+read/patch StorageProfiles. Existing classes, profiles, and default annotations
+are left untouched. Teardown deletes the temporary class.
+
+For `use_snapshot: true`, the harness creates snapshots of the template's source
+PVCs using the resolved class, then stages a VM template referencing those
+snapshots. This requires snapshot create/delete permissions in the source PVC
+namespaces. Source PVCs and DataSources are read-only; blank data disks remain
+blank. Existing snapshot sources must already use the selected class. Teardown
+removes snapshots created by the harness, subject to the class's deletion policy.
+
+Reports include `storage_selections` for each snapshot-backed execution: the
+backend storage class, resolved snapshot class, and any temporary storage class.
+These also appear in the Markdown report and JUnit properties, including when
+environment collection is skipped.
+
+---
+
+## Step 6 — Confirm `thresholds.json`
+
+The repository certification inputs include `thresholds.json`. Keep the
+catalog and thresholds from the same export and pass the file to the harness
+with `--thresholds`.
+
+---
+
+## Step 7 — Choose a Test Plan
+
+Pick a pre-made plan from `plans/` or author a custom one:
+
+```bash
+ls plans/
+# example-smoke.yaml     — quick sanity run, subset of TRs
+# example-performance.yaml — full performance tier
+```
+
+Open the plan and confirm the `backend:` field matches the name you chose in
+`backends.yaml`.
+
+---
+
+## Step 8 — Run Preflight
+
+The `preflight` sub-command validates connectivity, CSI health, and
+configuration before committing to a full run:
+
+```bash
+bin/harness preflight \
+  --catalog catalog.json \
+  --plan plans/example-smoke.yaml \
+  --backends backends.yaml \
+  --backend my-array
+```
+
+All preflight checks must pass (exit 0) before proceeding.
+
+---
+
+## Step 9 — Run Certification
+
+```bash
+bin/harness run \
+  --catalog catalog.json \
+  --plan plans/example-performance.yaml \
+  --backends backends.yaml \
+  --backend my-array \
+  --thresholds thresholds.json \
+  --workdir ./reports \
+  --output ./reports \
+  --verbose
+```
+
+When the run completes, `reports/` will contain `report.json`, `report.md`,
+`report.junit.xml`, `report.json`, `run.log`, and tool-generated result artifacts. Create the
+submission archive described in
+[`PARTNER-CERTIFICATION-GUIDE.md`](../PARTNER-CERTIFICATION-GUIDE.md).
+
+---
+
+### Storage preflight findings
+
+Storage preflight inspects target disks in prepared VM, DataVolume, and PVC
+manifests. It compares each resolved target StorageClass with the selected
+backend, and reports an error if the disk would use another class or a missing
+class. For DataVolume `spec.storage`, it reports the effective defaults from the
+selected class's CDI StorageProfile. Explicit disk settings are not rejected
+merely because they differ from the profile's recommendations.
+
+Source images must exist and be ready. Investigating their original StorageClass
+is advisory: a match is logged as information; a mismatch or an unknown class is
+logged as a warning and does not block execution. The administrator may intend
+cross-class cloning, which can require host-assisted copying and may affect
+performance. Matching classes do not prove acceleration.
+
+A ready snapshot remains a valid source after its original PVC is deleted.
+When a source PVC survives, preflight checks its PV's CSI volume identity against
+the bound snapshot content before using its class. For CDI-managed image imports,
+it can instead infer the class from the DataImportCron's recorded import-class
+annotation. The snapshot label, current import, last imported PVC, and managed
+DataSource must agree; the snapshot identity and readiness are checked again.
+The finding identifies this as CDI metadata inference. Missing, inaccessible, or
+inconsistent optional provenance leaves the class unknown and produces a warning.
+No storage-vendor resources or opaque volume-handle parsing are used.
+
+Snapshot driver and source volume mode are read from bound snapshot content.
+A shared CSI driver does not establish compatibility across backend types.
+Cross-namespace CDI cloning is checked using the current kubeconfig identity
+and CDI's source permission rules. Permission checks use non-persisted
+SelfSubjectAccessReview requests. Denied clone authorization blocks the run;
+an unavailable authorization decision produces a warning. These checks do not
+prove that all admission policies or subsequent controller operations will pass.
+
+CDI scratch storage may use a different class from source and target storage.
+For registry imports and uploads that require scratch space, preflight reads
+`CDIConfig.status.scratchSpaceStorageClass`, falling back to the target class
+when unset. It checks that the class exists and reports the required Filesystem
+and ReadWriteOnce properties. It does not infer provisioning support from the
+StorageProfile alone. Preflight is read-only; actual provisioning, capacity,
+backend connectivity, and clone acceleration still require a workload test.
+
+Live checks are opt-in tests in `internal/clustercheck`. Set
+`STORAGE_PREFLIGHT_LIVE_KUBECONFIG`, `STORAGE_PREFLIGHT_LIVE_NAS_CLASS`,
+`STORAGE_PREFLIGHT_LIVE_ECONOMY_CLASS`, `STORAGE_PREFLIGHT_LIVE_NAS_SOURCE`, and
+`STORAGE_PREFLIGHT_LIVE_ECONOMY_SOURCE` to run `TestStoragePreflightLive` against
+existing resources. Source values use `namespace/name`.
+
+`TestStoragePreflightPatchedLive` additionally requires
+`STORAGE_PREFLIGHT_LIVE_MUTATIONS=true` and
+`STORAGE_PREFLIGHT_LIVE_SNAPSHOT_CLASS`. It creates disposable namespaces,
+classes, profiles, sources, a small PVC/snapshot, and temporary reader RBAC. It
+covers the source/target/scratch class combinations and patches those fixtures
+to check failures and recovery. Cleanup removes the fixtures even after a test
+failure. Existing defaults, CDI scratch configuration, classes, profiles, and
+boot sources are not modified. These tests validate preflight behavior; they do
+not claim that every class combination can boot an OS or use accelerated clones.

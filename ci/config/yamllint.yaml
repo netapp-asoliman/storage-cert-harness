@@ -1,0 +1,19 @@
+extends: default
+
+ignore: |
+  vendor/
+  logs/
+  dist/
+  work/
+  .git/
+  internal/tools/virtbench/templates/
+  internal/tools/kubeburner/templates/
+
+rules:
+  document-start: disable
+  line-length:
+    max: 140
+    allow-non-breakable-inline-mappings: true
+  truthy:
+    allowed-values: ["true", "false", "on", "off", "yes", "no"]
+    check-keys: false

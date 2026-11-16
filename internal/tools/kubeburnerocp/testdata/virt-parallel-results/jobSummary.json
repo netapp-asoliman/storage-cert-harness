@@ -1,0 +1,116 @@
+[
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 100,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-create-vms-0",
+      "jobIterations": 1
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 4,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-resize-volumes-0",
+      "jobIterations": 1
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 6,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-restart-vms-0",
+      "jobIterations": 1
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 5,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-snapshot-vms-0",
+      "jobIterations": 1
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 10,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-migrate-vms-0",
+      "jobIterations": 1
+    }
+  },
+  {
+    "metricName": "jobSummary",
+    "elapsedTime": 3,
+    "uuid": "4412cfcd-0000-0000-0000-000000000000",
+    "passed": true,
+    "workloadFlags": {
+      "initialVms": "2",
+      "increment": "0",
+      "maxIterations": "1",
+      "skipMigrationJob": "false",
+      "skipResizeJob": "false",
+      "skipRestartJob": "false",
+      "skipSnapshotJob": "false"
+    },
+    "jobConfig": {
+      "name": "virt-parallel-delete-vms-0",
+      "jobIterations": 1
+    }
+  }
+]

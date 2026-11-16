@@ -1,0 +1,137 @@
+name: CI Images
+
+on:
+  workflow_call:
+    outputs:
+      image-build-success:
+        description: Whether the image was built and uploaded successfully
+        value: ${{ jobs.image-build.outputs.success }}
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  GOPROXY: "off"
+  GOFLAGS: "-mod=vendor"
+
+jobs:
+  image-lint:
+    # Report Containerfile policy issues without blocking image publication yet.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-lint.sh
+
+  image-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [image-lint]
+    outputs:
+      success: ${{ steps.report-success.outputs.success }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: harness-binary
+          path: bin
+      - run: chmod +x bin/harness
+      - env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-build.sh
+      - id: upload-image
+        uses: actions/upload-artifact@v7
+        with:
+          name: harness-image
+          path: dist/harness-image.tar
+          retention-days: 1
+      - id: report-success
+        if: always()
+        run: echo "success=${{ steps.upload-image.outcome == 'success' }}" >> "$GITHUB_OUTPUT"
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-image-build
+          path: logs/*.log
+          if-no-files-found: ignore
+
+  image-scan-trivy:
+    # Run on every image build, but do not make the workflow fail.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [image-build]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: harness-image
+          path: dist
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - id: artifact-timestamp
+        if: always()
+        run: echo "value=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Install trivy from Quay
+        run: |
+          set -euo pipefail
+          source ci/scripts/images.sh
+          podman pull "${TRIVY_IMAGE}"
+          container_id="$(podman create "${TRIVY_IMAGE}")"
+          trap 'podman rm "${container_id}" >/dev/null' EXIT
+          podman cp "${container_id}:/usr/local/bin/trivy" "${RUNNER_TEMP}/trivy"
+          sudo install -m 0755 "${RUNNER_TEMP}/trivy" /usr/local/bin/trivy
+      - env:
+          CONTAINER_ENGINE: podman
+        run: ./ci/scripts/image-scan-trivy.sh
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-image-scan-artifacts-${{ steps.artifact-timestamp.outputs.value }}
+          path: |
+            dist/trivy-report.json
+            dist/trivy-report.txt
+            dist/trivy-secret-report.json
+            dist/trivy-misconfig-report.txt
+            dist/sbom.cdx.json
+            logs/*.log
+          if-no-files-found: ignore
+
+  image-scan-dive:
+    # Run on every image build, but do not make the workflow fail.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [image-build]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: harness-image
+          path: dist
+      - id: artifact-timestamp
+        if: always()
+        run: echo "value=$(date -u +%Y%m%dT%H%M%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Install dive from Quay
+        run: |
+          set -euo pipefail
+          source ci/scripts/images.sh
+          podman pull "${DIVE_IMAGE}"
+          container_id="$(podman create "${DIVE_IMAGE}")"
+          trap 'podman rm "${container_id}" >/dev/null' EXIT
+          podman cp "${container_id}:/usr/local/bin/dive" "${RUNNER_TEMP}/dive"
+          sudo install -m 0755 "${RUNNER_TEMP}/dive" /usr/local/bin/dive
+      - run: ./ci/scripts/image-scan-dive.sh
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dive-image-scan-artifacts-${{ steps.artifact-timestamp.outputs.value }}
+          path: |
+            dist/dive-report.txt
+            logs/*.log
+          if-no-files-found: ignore

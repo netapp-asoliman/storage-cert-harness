@@ -1,0 +1,54 @@
+# Decrypted output of the future encrypted secrets folder (decisions/0004).
+/secrets/plain/
+
+# Real storage backend configs may carry inline credentials (dev only) or point
+# at local secret files — keep them out of git (decisions/0005). The curated
+# smoke-lab fixture is the only tracked backends.local.yaml.
+backends.yaml
+/far-config.json
+backends.local.yaml
+*.backends.yaml
+!backends.example.yaml
+!ci/config/smoke/backends.local.yaml
+
+# Build artifacts
+/bin/
+/dist/
+*.out
+coverage.*
+
+# Run reports — graded run output (may carry customer/measured numbers). SLA
+# gates themselves are public since decisions/0017, but reports still don't
+# belong in git. Never commit run output. --output writes here.
+/out/
+report.json
+report.md
+# virtbench local-exec scratch results (may contain measured run data)
+/virtbench/
+# Local live-image test inputs and outputs; kubeconfig must never be committed.
+/work/
+/work1/
+
+# Local / pre-commit CI logs (keep logs/README.md)
+/logs/**
+!/logs/README.md
+
+# Local TR-STOR-002 / smoke diagnostics (not part of CI)
+/ci/scripts/tests/
+
+# Local CI scratch (layout-check, image-contents-check, etc.)
+/ci-local/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+*.swp
+work1/kubeconfig-ecosys2
+certification-results*
+
+# Local-only partner install test helper (not shipped)
+ci/scripts/uninstall-partner-tools.sh
