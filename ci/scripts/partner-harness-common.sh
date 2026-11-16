@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for partner certification runs against the published Quay image.
+# Shared helpers for partner certification runs.
 # Source from run-partner-*.sh; do not execute directly.
 set -euo pipefail
 
@@ -337,10 +337,29 @@ partner_validate_far_config() {
 	echo "validation passed: FAR config is readable and targets ${target} (${source})"
 }
 
-partner_pull_image() {
+partner_prepare_image() {
 	local image="$1"
-	echo "==> pulling ${image}"
-	podman pull "${image}"
+	case "${USE_LOCAL_IMAGE:-false}" in
+		true)
+			if [[ -z "${HARNESS_IMAGE:-}" ]]; then
+				echo "error: USE_LOCAL_IMAGE=true requires HARNESS_IMAGE to name a local image" >&2
+				return 1
+			fi
+			if ! podman image exists "${image}"; then
+				echo "error: local image ${image} is unavailable in Podman" >&2
+				return 1
+			fi
+			echo "==> using local image ${image} (pull disabled)"
+			;;
+		false)
+			echo "==> pulling ${image}"
+			podman pull "${image}"
+			;;
+		*)
+			echo "error: USE_LOCAL_IMAGE must be true or false" >&2
+			return 1
+			;;
+	esac
 }
 
 partner_podman_arch() {
@@ -371,6 +390,9 @@ partner_run_harness_container() {
 		-e KUBECONFIG=/kubeconfig
 		-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}"
 	)
+	if [[ "${USE_LOCAL_IMAGE:-false}" == "true" ]]; then
+		podman_args+=(--pull=never)
+	fi
 	if [[ -n "${PARTNER_FAR_MOUNT:-}" ]]; then
 		podman_args+=(-v "${PARTNER_FAR_MOUNT}")
 	fi

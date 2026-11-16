@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host-side cluster/backends checks, then harness preflight in the published Quay image.
+# Host-side cluster/backends checks, then harness preflight in the selected image.
 set -euo pipefail
 
 usage() {
@@ -12,12 +12,14 @@ Environment:
   BACKEND             Backend name in backends.yaml (required)
   BACKENDS            Path to backends file (default: backends.yaml)
   HARNESS_IMAGE       Container image (default: quay.io/virtarraycert/storage-cert-harness:main)
+  USE_LOCAL_IMAGE     When true, use the local HARNESS_IMAGE without pulling (default: false)
+  GOARCH              Container architecture override, e.g. amd64 (default: host architecture)
   PLAN                Plan for tool selection (default: plans/level3-customer-no-load-80.yaml)
   FAR_CONFIG          Host FAR manifest for TR-VIRT-007 (default: ./far-config.json)
   PARTNER_KEEP_WORK   When true, do not archive prior logs (default: false)
 
 Runs host validation (API reachability, node Ready, StorageClass / VolumeSnapshotClass
-from backends.yaml), then `harness preflight` inside the published image.
+from backends.yaml), then `harness preflight` inside the selected image.
 EOF
 }
 
@@ -66,7 +68,7 @@ if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
 	validate_partner_level3_no_load_plan "${plan_path}"
 fi
 partner_validate_far_config "${plan_path}" "${repo_root}" "${kubeconfig}"
-partner_pull_image "${image}"
+partner_prepare_image "${image}"
 
 echo "==> harness preflight (container)"
 partner_run_harness_container "${image}" "${kubeconfig}" "${backends_file}" "${backend}" preflight \

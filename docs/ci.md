@@ -443,10 +443,10 @@ cluster. `run-image-tests.sh` expects staged `work/backends.local.yaml`,
 `work/harness-run-thresholds.json`, and `work/catalog.json`. See
 [`ci/scripts/run-harness/README.md`](../ci/scripts/run-harness/README.md).
 
-### Partner certification runs (published image)
+### Partner certification runs
 
-Partners run Level 3 certification against the **published** Quay image (no local
-`make image-build-local`). Workflow and cluster prep:
+By default, partners run Level 3 certification against the **published** Quay
+image. Workflow and cluster prep:
 [PARTNER-CERTIFICATION-GUIDE.md](../PARTNER-CERTIFICATION-GUIDE.md).
 
 | Make target | Script | Role |
@@ -459,7 +459,22 @@ Partners run Level 3 certification against the **published** Quay image (no loca
 
 Required environment: `KUBECONFIG`, `BACKEND` (name in `backends.yaml`). Optional:
 `HARNESS_IMAGE` (default `quay.io/virtarraycert/storage-cert-harness:main`),
-`CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN` (preflight only).
+`USE_LOCAL_IMAGE`, `GOARCH`, `CERT_RESULTS_ROOT`, `PARTNER_KEEP_WORK`, `PLAN`
+(preflight only).
+
+To run with an existing local Podman image instead of pulling, set both
+`USE_LOCAL_IMAGE=true` and `HARNESS_IMAGE` to its exact name. For example:
+
+```bash
+export USE_LOCAL_IMAGE=true HARNESS_IMAGE=localhost/storage-cert-harness:jq-test
+make partner-preflight
+make partner-cert-load-80
+make partner-cert-no-load-80
+```
+
+Set `GOARCH=amd64` if using an amd64 image on an arm64 host with emulation.
+Local mode fails if the image is missing and disables pulling for the container
+run. The normal cluster and certification prerequisites still apply.
 
 Outputs:
 
@@ -471,7 +486,7 @@ Outputs:
   Re-running a profile archives the prior `certification-results/<profile>/`
   tree with a UTC timestamp unless `PARTNER_KEEP_WORK=true`.
 
-`partner-harness-common.sh` is sourced only (validation, `podman pull`, log/
+`partner-harness-common.sh` is sourced only (validation, image preparation, log/
 result hygiene). Partner runs do **not** take `work/smoke-run.lock`; only one
 harness execution per cluster is documented as partner responsibility.
 

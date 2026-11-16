@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one Level-3 certification profile (load-80 or no-load-80) via the published Quay image.
+# Run one Level-3 certification profile (load-80 or no-load-80).
 set -euo pipefail
 
 usage() {
@@ -12,6 +12,8 @@ Environment:
   BACKEND             Backend name in backends.yaml (required)
   BACKENDS            Path to backends file (default: backends.yaml)
   HARNESS_IMAGE       Container image (default: quay.io/virtarraycert/storage-cert-harness:main)
+  USE_LOCAL_IMAGE     When true, use the local HARNESS_IMAGE without pulling (default: false)
+  GOARCH              Container architecture override, e.g. amd64 (default: host architecture)
   CERT_RESULTS_ROOT   Base directory for results (default: certification-results)
   CONTINUE_FROM       For no-load-80: prior report.json (default: <CERT_RESULTS_ROOT>/load-80/report/report.json)
   FAR_CONFIG          Host FAR manifest for TR-VIRT-007 (default: ./far-config.json)
@@ -87,7 +89,7 @@ if [[ "$(basename "${plan_path}")" == "level3-customer-no-load-80.yaml" ]]; then
 	validate_partner_level3_no_load_plan "${plan_path}"
 fi
 partner_validate_far_config "${plan_path}" "${repo_root}" "${kubeconfig}"
-partner_pull_image "${image}"
+partner_prepare_image "${image}"
 
 partner_prepare_result_dir "${out_dir}"
 work_dir="$(partner_abs_dir "${work_dir}")"
@@ -120,6 +122,9 @@ podman_args=(
 	-e KUBECONFIG=/kubeconfig
 	-e KUBECTL_INSECURE_SKIP_TLS_VERIFY="${KUBECTL_INSECURE_SKIP_TLS_VERIFY:-false}"
 )
+if [[ "${USE_LOCAL_IMAGE:-false}" == "true" ]]; then
+	podman_args+=(--pull=never)
+fi
 if [[ -n "${prior_mount}" ]]; then
 	podman_args+=(-v "${prior_mount}:/prior-load:ro,Z")
 fi

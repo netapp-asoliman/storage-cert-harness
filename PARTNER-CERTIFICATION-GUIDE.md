@@ -998,7 +998,9 @@ this repository clone if you customized plans.
 | `KUBECONFIG` | All partner targets | Cluster credentials (mounted read-only) |
 | `BACKEND` | All | Name of entry in `backends.yaml` (required) |
 | `BACKENDS` | Scripts | Path to backends file (default `backends.yaml`) |
-| `HARNESS_IMAGE` | Scripts | Override Quay image (default `:main` on virtarraycert repo) |
+| `HARNESS_IMAGE` | Scripts | Image reference (default `:main` on virtarraycert Quay repo) |
+| `USE_LOCAL_IMAGE` | Preflight + cert | Set to `true` with `HARNESS_IMAGE` to use an existing local Podman image without pulling |
+| `GOARCH` | Preflight + cert | Override container architecture, e.g. `amd64` for an amd64 image on an arm64 host using emulation |
 | `PLAN` | Preflight (and host validation for that plan) | Default `plans/level3-customer-no-load-80.yaml` |
 | `FAR_CONFIG` | Preflight + no-load when TR-VIRT-007 uses FAR | Host path to FAR manifest (default `./far-config.json`), mounted read-only at `/far-config.json` |
 | `CERT_RESULTS_ROOT` | Cert + package | Results base dir (default `certification-results`) |
