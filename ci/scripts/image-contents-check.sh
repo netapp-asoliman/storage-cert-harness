@@ -114,6 +114,13 @@ else
 	fail "/usr/bin/jq is missing or cannot process JSON"
 fi
 
+echo "==> checking /usr/bin/ssh"
+if run_cmd /usr/bin/ssh -V >/dev/null 2>&1; then
+	echo "  ssh: present"
+else
+	fail "/usr/bin/ssh is missing or cannot run"
+fi
+
 echo "==> checking /usr/bin/virtbench fio"
 if run_cmd env VIRTBENCH_REPO=/opt/virtbench-runtime /usr/bin/virtbench fio --help >/dev/null 2>&1; then
 	echo "  virtbench fio: present"
