@@ -18,8 +18,8 @@ LABEL io.storage-cert-harness.harness.version="${HARNESS_VERSION}"
 COPY bin/harness /usr/bin/
 COPY container-patches/virtbench/examples/utilities/ssh-pod.yaml /opt/virtbench-runtime/examples/utilities/ssh-pod.yaml
 COPY container-entrypoint.sh /usr/local/bin/
-# Builder RPM versions come from BUILD_IMAGE; jq is installed from enabled UBI repositories.
-RUN microdnf install -y jq \
+# Builder RPM versions come from BUILD_IMAGE; jq and the SSH client use enabled UBI repositories.
+RUN microdnf install -y jq openssh-clients \
   && microdnf clean all \
   && rm -rf /opt/virtbench-runtime/build /opt/virtbench-runtime/.github \
   && mkdir -p /home/harness/.config /home/harness/.local/share/containers \
